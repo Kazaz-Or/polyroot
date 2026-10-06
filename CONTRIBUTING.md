@@ -6,7 +6,7 @@ for a new feature, check the non-goals in the README.
 
 ## Setup
 
-Requires Go 1.24 or newer.
+Requires Go 1.26 or newer.
 
 ```bash
 go test ./...                 # unit + end-to-end tests (fake agents); real agents not required

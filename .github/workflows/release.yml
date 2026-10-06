@@ -74,7 +74,8 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          # Latest patched Go: scans and shipped binaries get stdlib security fixes.
+          go-version: stable
 
       - name: Test
         run: go test -race ./...

@@ -139,7 +139,7 @@ Prefer to read it first? `curl -fsSLO …/install.sh && less install.sh && sh in
 
 | Method | Command |
 |---|---|
-| Go 1.24+ | `go install github.com/Kazaz-Or/polyroot/cmd/polyroot@latest` |
+| Go 1.26+ | `go install github.com/Kazaz-Or/polyroot/cmd/polyroot@latest` |
 | Binary | download from [Releases](https://github.com/Kazaz-Or/polyroot/releases) |
 | From source | `git clone https://github.com/Kazaz-Or/polyroot && cd polyroot && go build ./cmd/polyroot` |
 
