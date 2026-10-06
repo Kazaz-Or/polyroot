@@ -47,15 +47,45 @@ func Execute(version string) int {
 }
 
 func (a *app) root(version string) *cobra.Command {
+	var rootAgent string
 	root := &cobra.Command{
-		Use:   "polyroot",
 		Short: "Multi-repo workspaces for coding agents",
-		Long: `Polyroot opens a logical multi-repository codebase in a coding agent.
+		Use:   "polyroot [workspace] [-- agent args...]",
+		Long: `Polyroot opens a logical multi-repository codebase in a coding agent
+(Claude Code, Codex CLI, Gemini CLI, OpenCode, Pi, or your own).
 
-Define repositories, groups and workspaces once in config.yaml, then:
+Quick start:
+  polyroot setup                                      once: choose your default agent
+  polyroot workspace add payments ~/git/api ~/git/web create a workspace (first path = primary)
+  polyroot payments                                   open it (same as: polyroot open payments)
 
-  polyroot open payments
-  polyroot open payments --agent codex -- --model o3`,
+Workspace commands:
+  polyroot workspace add <name> <repo-path>...        create a workspace, or add repos to one
+  polyroot workspace remove <name>                    remove a workspace
+
+Opening:
+  polyroot <workspace> [--agent NAME] [-- agent args...]
+  Agent choice: --agent, then the workspace's defaultAgent, then the global defaultAgent.
+  Everything after -- is passed to the agent unchanged.
+
+Configuration:
+  $POLYROOT_CONFIG_HOME/config.yaml, else $XDG_CONFIG_HOME/polyroot/config.yaml,
+  else ~/.config/polyroot/config.yaml. Edit it by hand any time; polyroot keeps
+  your changes. Generated launch files go to ~/.cache/polyroot
+  ($POLYROOT_CACHE_HOME, $XDG_CACHE_HOME).
+
+Docs: https://github.com/Kazaz-Or/polyroot`,
+		Example: `  polyroot payments
+  polyroot payments --agent codex -- --model o3
+  polyroot command payments --agent gemini     # show exactly what would run
+  polyroot workspace add payments ~/git/helm   # add a repo to a workspace`,
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return cmd.Help()
+			}
+			return a.open(cmd, args, rootAgent)
+		},
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -68,11 +98,26 @@ Define repositories, groups and workspaces once in config.yaml, then:
 			return err
 		},
 	}
+	root.Flags().StringVarP(&rootAgent, "agent", "a", "", "agent to launch when opening a workspace")
 	root.PersistentFlags().BoolVarP(&a.quiet, "quiet", "q", false, "print nothing but errors")
 	root.PersistentFlags().BoolVarP(&a.verbose, "verbose", "v", false, "print more detail")
 	root.SetOut(a.stdout)
 	root.SetErr(a.stderr)
-	root.AddCommand(a.openCmd(), a.commandCmd(), a.listCmd(), a.showCmd(), a.validateCmd(), a.agentsCmd(), a.doctorCmd())
+	root.AddGroup(
+		&cobra.Group{ID: "start", Title: "Set up:"},
+		&cobra.Group{ID: "use", Title: "Use workspaces:"},
+		&cobra.Group{ID: "check", Title: "Inspect and troubleshoot:"},
+	)
+	for group, cmds := range map[string][]*cobra.Command{
+		"start": {a.setupCmd(), a.workspaceCmd()},
+		"use":   {a.openCmd(), a.listCmd(), a.showCmd(), a.commandCmd()},
+		"check": {a.validateCmd(), a.agentsCmd(), a.doctorCmd()},
+	} {
+		for _, c := range cmds {
+			c.GroupID = group
+			root.AddCommand(c)
+		}
+	}
 	return root
 }
 
@@ -139,6 +184,34 @@ func (a *app) prepare(cmd *cobra.Command, args []string, agentFlag string) (*lau
 	return &launch{cfg: cfg, ws: ws, adapter: ad, spec: spec}, nil
 }
 
+// open launches the agent for the workspace in args[0].
+func (a *app) open(cmd *cobra.Command, args []string, agentFlag string) error {
+	l, err := a.prepare(cmd, args, agentFlag)
+	if err != nil {
+		return err
+	}
+	agent.CleanStaleRuns(a.dirs.Cache, 7*24*time.Hour)
+	if a.verbose {
+		agent.Print(a.stderr, l.spec, "")
+		fmt.Fprintln(a.stderr)
+	} else if !a.quiet {
+		fmt.Fprintf(a.stderr, "Workspace: %s\nAgent: %s\nRepositories: %d\nPrimary: %s\n",
+			l.ws.Name, l.spec.Agent, len(l.ws.Repos), tilde(l.ws.Primary().Path))
+		for _, w := range l.spec.Warnings {
+			fmt.Fprintf(a.stderr, "Warning: %s\n", w)
+		}
+		fmt.Fprintf(a.stderr, "\nLaunching %s...\n", l.adapter.Info().Display)
+	}
+	code, err := agent.Run(l.spec)
+	if err != nil {
+		return err
+	}
+	if code != 0 {
+		return ExitError{code}
+	}
+	return nil
+}
+
 func (a *app) openCmd() *cobra.Command {
 	var agentFlag string
 	cmd := &cobra.Command{
@@ -151,30 +224,7 @@ defaultAgent. Arguments after -- are passed to the agent unchanged.`,
 		Example: "  polyroot open payments\n  polyroot open payments --agent claude -- --model opus",
 		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			l, err := a.prepare(cmd, args, agentFlag)
-			if err != nil {
-				return err
-			}
-			agent.CleanStaleRuns(a.dirs.Cache, 7*24*time.Hour)
-			if a.verbose {
-				agent.Print(a.stderr, l.spec, "")
-				fmt.Fprintln(a.stderr)
-			} else if !a.quiet {
-				fmt.Fprintf(a.stderr, "Workspace: %s\nAgent: %s\nRepositories: %d\nPrimary: %s\n",
-					l.ws.Name, l.spec.Agent, len(l.ws.Repos), tilde(l.ws.Primary().Path))
-				for _, w := range l.spec.Warnings {
-					fmt.Fprintf(a.stderr, "Warning: %s\n", w)
-				}
-				fmt.Fprintf(a.stderr, "\nLaunching %s...\n", l.adapter.Info().Display)
-			}
-			code, err := agent.Run(l.spec)
-			if err != nil {
-				return err
-			}
-			if code != 0 {
-				return ExitError{code}
-			}
-			return nil
+			return a.open(cmd, args, agentFlag)
 		},
 	}
 	cmd.Flags().StringVarP(&agentFlag, "agent", "a", "", "agent to launch (overrides defaultAgent)")

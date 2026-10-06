@@ -1,4 +1,7 @@
-# Polyroot configuration.
+# Polyroot configuration: every option, with comments.
+# You rarely need to write this by hand: `polyroot setup` creates the file and
+# `polyroot workspace add <name> <path>...` adds workspaces. Edit it for
+# anything else (groups, contexts, custom agents); polyroot keeps your edits.
 # Location: $POLYROOT_CONFIG_HOME/config.yaml, else $XDG_CONFIG_HOME/polyroot/config.yaml,
 # else ~/.config/polyroot/config.yaml. Relative paths resolve against this file's directory.
 version: 1

@@ -100,7 +100,7 @@ type Agent struct {
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("no config file at %s\n  create it (template: https://github.com/Kazaz-Or/polyroot/blob/master/examples/config.yaml), or set POLYROOT_CONFIG_HOME", path)
+		return nil, fmt.Errorf("no config file at %s\n  run `polyroot setup` to create it, or write it by hand (all options: https://github.com/Kazaz-Or/polyroot/blob/master/examples/config.yaml)", path)
 	}
 	if err != nil {
 		return nil, err

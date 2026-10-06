@@ -18,7 +18,7 @@ func run(t *testing.T, args ...string) (string, error) {
 	return out.String(), err
 }
 
-func setup(t *testing.T) string {
+func setupConfig(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	for _, r := range []string{"git/api", "git/web", "git/sdk"} {
@@ -47,7 +47,7 @@ workspaces:
 }
 
 func TestCommandForwardsArgs(t *testing.T) {
-	setup(t)
+	setupConfig(t)
 	out, err := run(t, "command", "payments", "--agent", "claude", "--", "--model", "opus", "two words")
 	if err != nil {
 		t.Fatal(err)
@@ -63,7 +63,7 @@ func TestCommandForwardsArgs(t *testing.T) {
 }
 
 func TestWorkspaceDefaultAgent(t *testing.T) {
-	setup(t)
+	setupConfig(t)
 	out, err := run(t, "command", "gaming")
 	if err != nil || !strings.Contains(out, "codex") {
 		t.Fatalf("expected codex for gaming: %v\n%s", err, out)
@@ -71,7 +71,7 @@ func TestWorkspaceDefaultAgent(t *testing.T) {
 }
 
 func TestOpenRejectsExtraPositionals(t *testing.T) {
-	setup(t)
+	setupConfig(t)
 	if _, err := run(t, "open", "payments", "--model"); err == nil {
 		t.Error("unknown flags must not be silently forwarded")
 	}
@@ -81,7 +81,7 @@ func TestOpenRejectsExtraPositionals(t *testing.T) {
 }
 
 func TestListShowValidate(t *testing.T) {
-	dir := setup(t)
+	dir := setupConfig(t)
 	out, err := run(t, "list")
 	if err != nil || !strings.Contains(out, "payments   api       3") {
 		t.Fatalf("list: %v\n%s", err, out)

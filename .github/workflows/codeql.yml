@@ -19,7 +19,8 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          # Latest patched Go: scans and shipped binaries get stdlib security fixes.
+          go-version: stable
       - uses: github/codeql-action/init@v4
         with:
           languages: go

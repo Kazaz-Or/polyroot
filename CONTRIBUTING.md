@@ -6,7 +6,7 @@ for a new feature, check the non-goals in the README.
 
 ## Setup
 
-Requires Go 1.24 or newer.
+Requires Go 1.26 or newer.
 
 ```bash
 go test ./...                 # unit + end-to-end tests (fake agents); real agents not required
@@ -24,6 +24,7 @@ cmd/polyroot         main
 internal/config      YAML schema, path expansion, structural validation
 internal/workspace   resolution (repos, groups, order, dedup) and the workspace map
 internal/agent       Adapter interface, detection, runner, one file per agent
+internal/configedit  comment-preserving edits of config.yaml (setup, workspace add/remove)
 internal/cli         cobra commands
 docs/agents          one page per agent: mechanism, versions, limitations
 ```
@@ -52,8 +53,30 @@ The resolver (`internal/workspace`) must never learn about a specific agent.
 
 ## Pull requests
 
+- Use [Conventional Commits](https://www.conventionalcommits.org/) for commit
+  and PR titles: `feat: ...`, `fix: ...`, `docs: ...`, `ci: ...`,
+  `refactor: ...`. Release notes are grouped by these prefixes; anything
+  else is listed under "Other changes".
+
 - Keep changes focused, and add tests for behavior changes.
 - Update `CHANGELOG.md` under "Unreleased".
 - By contributing you agree your work is licensed under the MIT license.
+
+## Releases (maintainers)
+
+Releases are cut from GitHub, never by pushing tags by hand:
+**Actions → Release → Run workflow** on the default branch. Only the
+repository owner can run it; the job is skipped for anyone else.
+
+- `bump`: `patch`, `minor` or `major`, applied to the latest stable `v*` tag.
+- `version`: an exact version instead, e.g. `v0.1.0` or `v0.2.0-rc.1`.
+  Pre-release versions are marked as pre-releases.
+- `draft`: leave the release unpublished so you can edit the notes first.
+
+The workflow runs the tests, pushes the tag, builds macOS and Linux binaries
+with GoReleaser, and publishes the release with `checksums.txt`. Update
+`CHANGELOG.md` before running it. If a run fails after the tag was pushed,
+delete the tag (`git push origin :refs/tags/vX.Y.Z`) and any draft release,
+then run it again.
 
 Please follow the [Code of Conduct](CODE_OF_CONDUCT.md).

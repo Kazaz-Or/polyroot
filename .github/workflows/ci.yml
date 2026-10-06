@@ -21,7 +21,8 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          # Latest patched Go: scans and shipped binaries get stdlib security fixes.
+          go-version: stable
       - name: gofmt
         run: |
           unformatted=$(gofmt -l .)
@@ -51,7 +52,8 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          # Latest patched Go: scans and shipped binaries get stdlib security fixes.
+          go-version: stable
       # Unit + end-to-end tests. E2E launches fake agent binaries through the
       # real `polyroot open` path; real agents are not required.
       - name: Test
@@ -80,6 +82,43 @@ jobs:
           for agent in claude codex gemini opencode pi; do ./polyroot command demo --agent "$agent" -- --example-arg; done
           ./polyroot agents
 
+  install-script:
+    name: Install script (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          # Latest patched Go: scans and shipped binaries get stdlib security fixes.
+          go-version: stable
+      - name: Build release archives locally
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: release --snapshot --clean --skip=publish
+      - name: Run install.sh against the local archives
+        shell: bash
+        run: |
+          version=$(jq -r .version dist/metadata.json)
+          dir="$RUNNER_TEMP/install dir"
+          POLYROOT_DOWNLOAD_BASE="file://$PWD/dist" POLYROOT_VERSION="$version" \
+            POLYROOT_INSTALL_DIR="$dir" sh < install.sh
+          "$dir/polyroot" --version | grep -F "$version"
+      - name: A tampered archive must be rejected
+        shell: bash
+        run: |
+          version=$(jq -r .version dist/metadata.json)
+          for f in dist/*.tar.gz; do echo tampered >> "$f"; done
+          if POLYROOT_DOWNLOAD_BASE="file://$PWD/dist" POLYROOT_VERSION="$version" \
+            POLYROOT_INSTALL_DIR="$RUNNER_TEMP/bad" sh install.sh; then
+            echo "install.sh accepted a tampered archive"; exit 1
+          fi
+          test ! -e "$RUNNER_TEMP/bad/polyroot"
+
   release-check:
     name: Release config
     runs-on: ubuntu-latest
@@ -87,7 +126,8 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          # Latest patched Go: scans and shipped binaries get stdlib security fixes.
+          go-version: stable
       - name: Cross-compile all release targets
         run: |
           for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do

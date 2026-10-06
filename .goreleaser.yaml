@@ -18,29 +18,70 @@ archives:
 checksum:
   name_template: checksums.txt
 
+# Release notes: commits since the previous tag, grouped by Conventional
+# Commit type (feat:, fix:, docs:, ...), each with its author and link.
 changelog:
   use: github
+  sort: asc
+  groups:
+    - title: "🚀 Features"
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: "🐛 Bug fixes"
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: "🔒 Security"
+      regexp: '^.*?(sec|security)(\(.+\))??!?:.+$'
+      order: 2
+    - title: "⚡ Performance"
+      regexp: '^.*?perf(\(.+\))??!?:.+$'
+      order: 3
+    - title: "📚 Documentation"
+      regexp: '^.*?docs(\(.+\))??!?:.+$'
+      order: 4
+    - title: "🔧 Maintenance"
+      regexp: '^.*?(chore|ci|build|refactor|test|deps)(\(.+\))??!?:.+$'
+      order: 5
+    - title: "Other changes"
+      order: 999
   filters:
-    exclude: ["^docs:", "^test:", "^chore:"]
+    exclude:
+      - "^Merge (pull request|branch)"
 
 release:
   github:
     owner: Kazaz-Or
     name: polyroot
-  draft: true
+  draft: true      # the Release workflow publishes it unless "draft" is chosen
+  prerelease: auto  # v1.2.0-rc.1 is marked as a pre-release
+  name_template: "Polyroot {{ .Tag }}"
+  header: |
+    ## Polyroot {{ .Tag }}
 
-homebrew_casks:
-  - name: polyroot
-    repository:
-      owner: Kazaz-Or
-      name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    homepage: https://github.com/Kazaz-Or/polyroot
-    description: Multi-repo workspaces for coding agents
-    license: MIT
-    hooks:
-      post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/polyroot"]
-          end
+    Multi-repo workspaces for coding agents. Full documentation: [README](https://github.com/Kazaz-Or/polyroot/blob/{{ .Tag }}/README.md) · [Changelog](https://github.com/Kazaz-Or/polyroot/blob/{{ .Tag }}/CHANGELOG.md)
+
+    ### Install
+
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/Kazaz-Or/polyroot/master/install.sh | POLYROOT_VERSION={{ .Tag }} sh
+    ```
+
+    or `go install github.com/Kazaz-Or/polyroot/cmd/polyroot@{{ .Tag }}`
+
+    ### Downloads
+
+    | Platform | Archive |
+    |---|---|
+    | macOS (Apple silicon) | `polyroot_{{ .Version }}_darwin_arm64.tar.gz` |
+    | macOS (Intel) | `polyroot_{{ .Version }}_darwin_amd64.tar.gz` |
+    | Linux (x86_64) | `polyroot_{{ .Version }}_linux_amd64.tar.gz` |
+    | Linux (ARM64) | `polyroot_{{ .Version }}_linux_arm64.tar.gz` |
+
+    Each archive contains the `polyroot` binary, `LICENSE`, `README.md`, `CHANGELOG.md` and `examples/`.
+    Verify a download with `sha256sum -c checksums.txt --ignore-missing` (macOS: `shasum -a 256 -c checksums.txt --ignore-missing`).
+
+    Built with {{ .Env.GOVERSION }} from commit [`{{ .ShortCommit }}`](https://github.com/Kazaz-Or/polyroot/commit/{{ .FullCommit }}).
+
+    ## What's changed
+  footer: |
+    {{ if .PreviousTag }}**Full changelog**: https://github.com/Kazaz-Or/polyroot/compare/{{ .PreviousTag }}...{{ .Tag }}{{ else }}**Full changelog**: https://github.com/Kazaz-Or/polyroot/commits/{{ .Tag }}{{ end }}

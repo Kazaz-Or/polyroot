@@ -322,3 +322,113 @@ func TestE2EBuiltinOverride(t *testing.T) {
 		t.Errorf("extends should inherit the claude override: %q", rec.Args)
 	}
 }
+
+// TestE2EUserFlow walks the documented first-run flow with real commands:
+// setup, workspace add, `polyroot <workspace>`, a hand edit, an update and a
+// removal.
+func TestE2EUserFlow(t *testing.T) {
+	e := setupE2E(t)
+	cfgFile := filepath.Join(e.root, "cfg", "config.yaml")
+	if err := os.Remove(cfgFile); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(t, "workspace", "add", "shop", e.api); err == nil || !strings.Contains(err.Error(), "polyroot setup") {
+		t.Fatalf("workspace add before setup should point to setup: %v", err)
+	}
+
+	out, err := run(t, "setup", "--agent", "claude")
+	if err != nil || !strings.Contains(out, "Created") {
+		t.Fatalf("setup: %v\n%s", err, out)
+	}
+	if out, _ := run(t, "setup", "--agent", "codex"); !strings.Contains(out, "already set up") {
+		t.Fatalf("second setup must not change anything:\n%s", out)
+	}
+
+	// Paths with spaces, relative to the current directory.
+	t.Chdir(filepath.Dir(e.api))
+	out, err = run(t, "workspace", "add", "shop", "payments api", e.web)
+	if err != nil {
+		t.Fatalf("workspace add: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, `Created workspace "shop": primary payments api, plus web`) {
+		t.Errorf("add output:\n%s", out)
+	}
+
+	// polyroot <workspace> opens it.
+	rec, err := e.open(t, "shop", "--", "hi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Name != "claude" || rec.Cwd != e.api || !slices.Equal(rec.Args[:2], []string{"--add-dir", e.web}) || rec.Args[len(rec.Args)-1] != "hi" {
+		t.Errorf("shorthand open: %s %q in %s", rec.Name, rec.Args, rec.Cwd)
+	}
+	_ = os.Remove(e.record)
+	if _, err := run(t, "-q", "shop", "--agent", "codex"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Hand edits survive later changes.
+	data, _ := os.ReadFile(cfgFile)
+	edited := strings.Replace(string(data), "workspaces:", "# my note\nworkspaces:", 1)
+	if err := os.WriteFile(cfgFile, []byte(edited), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err = run(t, "workspace", "add", "shop", e.sdk, "--agent", "pi")
+	if err != nil || !strings.Contains(out, "Updated workspace") {
+		t.Fatalf("update: %v\n%s", err, out)
+	}
+	data, _ = os.ReadFile(cfgFile)
+	if !strings.Contains(string(data), "# my note") || !strings.Contains(string(data), "defaultAgent: pi") {
+		t.Errorf("hand edit lost or agent not set:\n%s", data)
+	}
+	if _, err := os.Stat(cfgFile + ".bak"); err != nil {
+		t.Error("no backup written")
+	}
+	out, _ = run(t, "show", "shop")
+	if !strings.Contains(out, "shared sdk") {
+		t.Errorf("sdk not added:\n%s", out)
+	}
+
+	// The same physical repo is reused, not registered twice.
+	if _, err := run(t, "workspace", "add", "other", e.web, e.api); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(cfgFile)
+	if strings.Count(string(data), "/src/web") != 1 {
+		t.Errorf("repo registered twice:\n%s", data)
+	}
+
+	for _, bad := range [][]string{
+		{"workspace", "add", "list", e.api},          // shadows a command
+		{"workspace", "add", "bad name", e.api},      // invalid name
+		{"workspace", "add", "x", "/does/not/exist"}, // missing path
+		{"workspace", "add", "x", "/"},               // unsafe root
+	} {
+		if _, err := run(t, bad...); err == nil {
+			t.Errorf("%v should fail", bad)
+		}
+	}
+
+	if _, err := run(t, "workspace", "remove", "shop"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(t, "show", "shop"); err == nil {
+		t.Error("removed workspace still exists")
+	}
+	if _, err := run(t, "nosuchworkspace"); err == nil || !strings.Contains(err.Error(), "unknown workspace") {
+		t.Errorf("unknown workspace via shorthand: %v", err)
+	}
+}
+
+func TestHelpListsEverything(t *testing.T) {
+	setupE2E(t)
+	out, err := run(t, "help")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"setup", "workspace add", "workspace remove", "open", "list", "show", "command", "validate", "agents", "doctor", "--agent", "POLYROOT_CONFIG_HOME"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("help lacks %q", want)
+		}
+	}
+}
