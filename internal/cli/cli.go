@@ -55,13 +55,15 @@ func (a *app) root(version string) *cobra.Command {
 (Claude Code, Codex CLI, Gemini CLI, OpenCode, Pi, or your own).
 
 Quick start:
-  polyroot setup                                      once: choose your default agent
-  polyroot workspace add payments ~/git/api ~/git/web create a workspace (first path = primary)
-  polyroot payments                                   open it (same as: polyroot open payments)
+  polyroot setup                                  once: default agent + where your code lives
+  polyroot workspace add payments api web sdk     create a workspace (first repo = primary)
+  polyroot payments                               open it (same as: polyroot open payments)
 
 Workspace commands:
-  polyroot workspace add <name> <repo-path>...        create a workspace, or add repos to one
-  polyroot workspace remove <name>                    remove a workspace
+  polyroot workspace add <name> <repo>...         create a workspace, or add repos to one;
+                                                  a repo is a registered name, a folder in
+                                                  your repoDirs, or a path
+  polyroot workspace remove <name>                remove a workspace
 
 Opening:
   polyroot <workspace> [--agent NAME] [-- agent args...]
@@ -74,11 +76,13 @@ Configuration:
   your changes. Generated launch files go to ~/.cache/polyroot
   ($POLYROOT_CACHE_HOME, $XDG_CACHE_HOME).
 
+Tab completion (workspaces, repos, agents): polyroot completion --help
+
 Docs: https://github.com/Kazaz-Or/polyroot`,
 		Example: `  polyroot payments
   polyroot payments --agent codex -- --model o3
   polyroot command payments --agent gemini     # show exactly what would run
-  polyroot workspace add payments ~/git/helm   # add a repo to a workspace`,
+  polyroot workspace add payments helm         # add a repo to a workspace`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -99,6 +103,8 @@ Docs: https://github.com/Kazaz-Or/polyroot`,
 		},
 	}
 	root.Flags().StringVarP(&rootAgent, "agent", "a", "", "agent to launch when opening a workspace")
+	root.ValidArgsFunction = completeWorkspace(a)
+	_ = root.RegisterFlagCompletionFunc("agent", completeAgents(a))
 	root.PersistentFlags().BoolVarP(&a.quiet, "quiet", "q", false, "print nothing but errors")
 	root.PersistentFlags().BoolVarP(&a.verbose, "verbose", "v", false, "print more detail")
 	root.SetOut(a.stdout)
@@ -118,7 +124,31 @@ Docs: https://github.com/Kazaz-Or/polyroot`,
 			root.AddCommand(c)
 		}
 	}
+	a.registerCompletions(root)
 	return root
+}
+
+// registerCompletions wires shell completion for workspace names, repos and agents.
+func (a *app) registerCompletions(root *cobra.Command) {
+	var walk func(*cobra.Command)
+	walk = func(c *cobra.Command) {
+		switch c.CommandPath() {
+		case "polyroot open", "polyroot command", "polyroot show", "polyroot validate", "polyroot workspace remove":
+			c.ValidArgsFunction = completeWorkspace(a)
+		case "polyroot workspace add":
+			c.ValidArgsFunction = completeWorkspaceAdd(a)
+			_ = c.RegisterFlagCompletionFunc("primary", func(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+				return completeRepos(toComplete, nil)
+			})
+		}
+		if c != root && c.Flags().Lookup("agent") != nil {
+			_ = c.RegisterFlagCompletionFunc("agent", completeAgents(a))
+		}
+		for _, sub := range c.Commands() {
+			walk(sub)
+		}
+	}
+	walk(root)
 }
 
 // loadConfig loads the config file and fails on any structural problem.
@@ -357,6 +387,11 @@ paths, and whether the effective agent can represent each workspace.`,
 				}
 				names = args
 			}
+			for _, d := range cfg.MissingRepoDirs() {
+				if !a.quiet {
+					fmt.Fprintf(a.stdout, "warn  repoDirs: %s does not exist\n", d)
+				}
+			}
 			failed := 0
 			for _, name := range names {
 				errs, warns := validateWorkspace(cfg, name, agentFlag, a.dirs.Cache)
@@ -389,11 +424,6 @@ func validateWorkspace(cfg *config.Config, name, agentFlag, cacheDir string) (er
 	ws, err := workspace.Resolve(cfg, name)
 	if err != nil {
 		return []error{err}, nil
-	}
-	for _, r := range ws.Repos {
-		if !workspace.IsGitRepo(r.Path) {
-			warns = append(warns, fmt.Errorf("%s (%s) is not a Git repository", r.Name, r.Path))
-		}
 	}
 	agName, err := cfg.AgentFor(name, agentFlag)
 	if err != nil {

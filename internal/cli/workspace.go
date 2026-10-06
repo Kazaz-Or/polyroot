@@ -12,6 +12,7 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/Kazaz-Or/polyroot/internal/agent"
 	"github.com/Kazaz-Or/polyroot/internal/config"
@@ -21,8 +22,7 @@ import (
 var workspaceNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 func isTerminal() bool {
-	st, err := os.Stdin.Stat()
-	return err == nil && st.Mode()&os.ModeCharDevice != 0
+	return term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
 }
 
 // ask runs one interactive prompt. Set ACCESSIBLE=1 for screen readers.
@@ -36,58 +36,146 @@ func ask(field huh.Field) error {
 
 func (a *app) setupCmd() *cobra.Command {
 	var agentFlag string
+	var repoDirs []string
 	cmd := &cobra.Command{
 		Use:   "setup",
-		Short: "First-time setup: choose your default agent and create the config",
-		Long: `First-time setup. Choose your default coding agent and create config.yaml.
+		Short: "First-time setup: default agent and where your repositories live",
+		Long: `First-time setup. Choose your default coding agent and the directories that
+hold your repositories (Git or not), and create config.yaml.
+
+With repository directories configured, workspaces can name repositories by
+folder name ("payments-api") instead of full paths. Add more directories
+later by editing "repoDirs:" in config.yaml.
 
 Run it once. Afterwards, add workspaces with "polyroot workspace add" or edit
 config.yaml by hand.`,
-		Example: "  polyroot setup\n  polyroot setup --agent codex",
+		Example: "  polyroot setup\n  polyroot setup --agent codex --repo-dir ~/git --repo-dir ~/work",
 		Args:    cobra.NoArgs,
-		RunE: func(*cobra.Command, []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			file := a.dirs.File()
 			if _, err := os.Stat(file); err == nil {
-				fmt.Fprintf(a.stdout, "Polyroot is already set up: %s\n\nAdd a workspace:  polyroot workspace add <name> <repo-path>...\nOr edit the file by hand.\n", file)
+				fmt.Fprintf(a.stdout, "Polyroot is already set up: %s\n\nAdd a workspace:  polyroot workspace add <name> <repo>...\nChange settings by editing the file.\n", file)
 				return nil
 			}
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			interactive := isTerminal()
+			if agentFlag == "" && !interactive {
+				return errors.New("no terminal for the interactive prompts; pass --agent <name> (and optionally --repo-dir <dir>)")
+			}
+
 			choice := agentFlag
 			if choice == "" {
-				if !isTerminal() {
-					return errors.New("no terminal for the interactive prompt; pass --agent <name>")
-				}
-				var opts []huh.Option[string]
-				for _, ad := range agent.Builtins() {
-					label := fmt.Sprintf("%-9s %s", ad.Name(), ad.Info().Display)
-					if _, err := exec.LookPath(ad.Info().Binary); err == nil {
-						label += "  (installed)"
-						if choice == "" {
-							choice = ad.Name()
-						}
-					}
-					opts = append(opts, huh.NewOption(label, ad.Name()))
-				}
-				if err := ask(huh.NewSelect[string]().
-					Title("Which coding agent should Polyroot use by default?").
-					Description("You can still pick another one per launch with --agent.").
-					Options(opts...).Value(&choice)); err != nil {
+				if choice, err = promptAgent(); err != nil {
 					return err
 				}
 			}
 			if _, err := agent.Lookup(nil, choice); err != nil {
 				return err
 			}
+
+			if !cmd.Flags().Changed("repo-dir") && interactive {
+				if repoDirs, err = promptRepoDirs(home); err != nil {
+					return err
+				}
+			}
+			var display []string
+			for _, d := range repoDirs {
+				p, err := config.ExpandPath(d, home)
+				if err != nil {
+					return err
+				}
+				if st, err := os.Stat(p); err != nil || !st.IsDir() {
+					return fmt.Errorf("repository directory %s does not exist", p)
+				}
+				display = append(display, configedit.DisplayPath(p, home))
+			}
+
 			doc := configedit.NewDocument()
 			doc.SetDefaultAgent(choice)
+			if len(display) > 0 {
+				doc.SetRepoDirs(display)
+			}
 			if err := doc.Save(file, agent.BuiltinNames()); err != nil {
 				return err
 			}
-			fmt.Fprintf(a.stdout, "Created %s (default agent: %s)\n\nNext, create a workspace from your repositories:\n  polyroot workspace add <name> <primary-repo-path> <other-repo-path>...\n", file, choice)
+			fmt.Fprintf(a.stdout, "Created %s\n  default agent:    %s\n", file, choice)
+			if len(display) > 0 {
+				fmt.Fprintf(a.stdout, "  repo directories: %s\n", strings.Join(display, ", "))
+			}
+			fmt.Fprintln(a.stdout, "\nNext, create a workspace (the first repository is where the agent starts):\n  polyroot workspace add <name> <repo> <repo>...")
+			if len(display) > 0 {
+				fmt.Fprintln(a.stdout, "Repositories can be folder names from your repo directories, e.g. payments-api.")
+			}
+			fmt.Fprintln(a.stdout, "\nTab completion: see `polyroot completion --help`.")
 			return nil
 		},
 	}
 	cmd.Flags().StringVarP(&agentFlag, "agent", "a", "", "default agent (skips the prompt): "+strings.Join(agent.BuiltinNames(), ", "))
+	cmd.Flags().StringSliceVar(&repoDirs, "repo-dir", nil, "directory holding your repositories (repeatable; skips the prompt)")
 	return cmd
+}
+
+func promptAgent() (string, error) {
+	choice := ""
+	var opts []huh.Option[string]
+	for _, ad := range agent.Builtins() {
+		label := fmt.Sprintf("%-9s %s", ad.Name(), ad.Info().Display)
+		if _, err := exec.LookPath(ad.Info().Binary); err == nil {
+			label += "  (installed)"
+			if choice == "" {
+				choice = ad.Name()
+			}
+		}
+		opts = append(opts, huh.NewOption(label, ad.Name()))
+	}
+	err := ask(huh.NewSelect[string]().
+		Title("Which coding agent should Polyroot use by default?").
+		Description("You can still pick another one per launch with --agent.").
+		Options(opts...).Value(&choice))
+	return choice, err
+}
+
+// commonRepoDirs are suggested when they exist.
+var commonRepoDirs = []string{"git", "code", "src", "projects", "dev", "repos", "workspace", "Developer"}
+
+func promptRepoDirs(home string) ([]string, error) {
+	var found []string
+	for _, d := range commonRepoDirs {
+		if st, err := os.Stat(filepath.Join(home, d)); err == nil && st.IsDir() {
+			found = append(found, "~/"+d)
+		}
+	}
+	value := strings.Join(found, ", ")
+	err := ask(huh.NewInput().
+		Title("Where do you keep your code?").
+		Description("One or more directories holding your repositories or project folders, comma-separated.\nWorkspaces can then use folder names instead of paths. Leave empty to always use paths.").
+		Placeholder("~/git, ~/work").
+		Validate(func(s string) error {
+			for _, d := range splitList(s) {
+				p, err := config.ExpandPath(d, home)
+				if err != nil {
+					return err
+				}
+				if st, err := os.Stat(p); err != nil || !st.IsDir() {
+					return fmt.Errorf("%s does not exist", d)
+				}
+			}
+			return nil
+		}).Value(&value))
+	return splitList(value), err
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 func (a *app) workspaceCmd() *cobra.Command {
@@ -130,7 +218,11 @@ number of workspaces. Without arguments, you are prompted for everything.`,
 					return errors.New("missing arguments: polyroot workspace add <name> <repo-path> [<repo-path> ...]")
 				}
 				var err error
-				if name, paths, notes, err = a.promptWorkspace(cmd.Root(), name); err != nil {
+				_, cfg, err := a.loadForEdit()
+				if err != nil {
+					return err
+				}
+				if name, paths, notes, err = a.promptWorkspace(cmd.Root(), cfg, name); err != nil {
 					return err
 				}
 			}
@@ -223,16 +315,22 @@ func (a *app) addWorkspace(root *cobra.Command, name string, paths []string, pri
 		taken[n] = r.Path
 	}
 	nameFor := func(raw string) (string, error) {
-		p, err := config.RepoPath(raw, cwd)
+		if p := taken[raw]; p != "" {
+			return raw, nil // registered earlier in this run
+		}
+		n, p, err := cfg.ResolveRepo(raw, cwd)
 		if err != nil {
-			return "", fmt.Errorf("%s: %w", raw, err)
+			return "", err
+		}
+		if n != "" {
+			return n, nil
 		}
 		for n, existing := range taken {
 			if existing == p {
 				return n, nil
 			}
 		}
-		n := configedit.RepoName(p, taken)
+		n = configedit.RepoName(p, taken)
 		taken[n] = p
 		doc.AddRepo(n, configedit.DisplayPath(p, home))
 		fmt.Fprintf(a.stdout, "Registered repo %s: %s\n", n, configedit.DisplayPath(p, home))
@@ -257,9 +355,7 @@ func (a *app) addWorkspace(root *cobra.Command, name string, paths []string, pri
 		ws.Primary = added[0]
 	}
 	if primaryArg != "" {
-		if cfg.Repos[primaryArg] != nil || taken[primaryArg] != "" {
-			ws.Primary = primaryArg
-		} else if ws.Primary, err = nameFor(primaryArg); err != nil {
+		if ws.Primary, err = nameFor(primaryArg); err != nil {
 			return err
 		}
 	}
@@ -305,7 +401,7 @@ func (a *app) addWorkspace(root *cobra.Command, name string, paths []string, pri
 }
 
 // promptWorkspace asks for whatever was not given on the command line.
-func (a *app) promptWorkspace(root *cobra.Command, name string) (string, []string, string, error) {
+func (a *app) promptWorkspace(root *cobra.Command, cfg *config.Config, name string) (string, []string, string, error) {
 	if name == "" {
 		if err := ask(huh.NewInput().
 			Title("Workspace name").
@@ -319,19 +415,24 @@ func (a *app) promptWorkspace(root *cobra.Command, name string) (string, []strin
 	var paths []string
 	for {
 		var p string
-		title := "Primary repository path (the agent starts here)"
+		title := "Primary repository (the agent starts here)"
 		if len(paths) > 0 {
-			title = "Another repository path (leave empty to finish)"
+			title = "Another repository (leave empty to finish)"
 		}
-		if err := ask(huh.NewInput().Title(title).
+		hint := "A folder name from your repoDirs, a registered repo name, or a path."
+		if len(cfg.RepoDirPaths) > 0 {
+			hint = "A folder name from " + strings.Join(cfg.RepoDirs, ", ") + ", a registered repo name, or a path. Tab completes."
+		}
+		if err := ask(huh.NewInput().Title(title).Description(hint).
+			Suggestions(cfg.RepoCandidates()).
 			Validate(func(s string) error {
 				if strings.TrimSpace(s) == "" {
 					if len(paths) == 0 {
-						return errors.New("enter at least one repository path")
+						return errors.New("enter at least one repository")
 					}
 					return nil
 				}
-				_, err := config.RepoPath(strings.TrimSpace(s), cwd)
+				_, _, err := cfg.ResolveRepo(s, cwd)
 				return err
 			}).Value(&p)); err != nil {
 			return "", nil, "", err

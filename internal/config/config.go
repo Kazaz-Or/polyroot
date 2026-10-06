@@ -21,15 +21,21 @@ const SchemaVersion = 1
 
 // Config is the parsed configuration file.
 type Config struct {
-	Version      int                   `yaml:"version"`
-	DefaultAgent string                `yaml:"defaultAgent"`
-	Repos        map[string]*Repo      `yaml:"repos"`
-	Groups       map[string]*Group     `yaml:"groups"`
-	Workspaces   map[string]*Workspace `yaml:"workspaces"`
-	Agents       map[string]*Agent     `yaml:"agents"`
+	Version      int    `yaml:"version"`
+	DefaultAgent string `yaml:"defaultAgent"`
+	// RepoDirs are directories holding repositories, so workspaces can name
+	// a repository by its folder name instead of a full path.
+	RepoDirs   []string              `yaml:"repoDirs"`
+	Repos      map[string]*Repo      `yaml:"repos"`
+	Groups     map[string]*Group     `yaml:"groups"`
+	Workspaces map[string]*Workspace `yaml:"workspaces"`
+	Agents     map[string]*Agent     `yaml:"agents"`
 
 	// File is the absolute path the config was loaded from.
 	File string `yaml:"-"`
+	// RepoDirPaths are RepoDirs expanded to absolute paths (same order).
+	RepoDirPaths []string `yaml:"-"`
+	repoDirErrs  []error
 }
 
 // Repo is a physical repository on disk, registered once.
@@ -132,6 +138,14 @@ func Parse(data []byte, file string) (*Config, error) {
 		}
 		r.Path, r.PathErr = RepoPath(r.Raw, dir)
 	}
+	for _, raw := range cfg.RepoDirs {
+		p, err := ExpandPath(raw, dir)
+		if err != nil {
+			cfg.repoDirErrs = append(cfg.repoDirErrs, fmt.Errorf("repoDirs entry %q: %w", raw, err))
+			continue
+		}
+		cfg.RepoDirPaths = append(cfg.RepoDirPaths, p)
+	}
 	for name, a := range cfg.Agents {
 		// A command with a path component (~/bin/x, ./x, /opt/x) is a file path;
 		// a bare name is looked up in PATH at launch.
@@ -167,6 +181,8 @@ func (c *Config) Check(builtinAgents []string) []error {
 		builtin[n] = true
 	}
 	knownAgent := func(n string) bool { return builtin[n] || c.Agents[n] != nil }
+
+	errs = append(errs, c.repoDirErrs...)
 
 	if c.DefaultAgent != "" && !knownAgent(c.DefaultAgent) {
 		add("defaultAgent %q is not a known agent (built-in: %s)", c.DefaultAgent, strings.Join(builtinAgents, ", "))
@@ -313,6 +329,19 @@ func (a *Agent) envOrNil() map[string]string {
 		return nil
 	}
 	return a.Env
+}
+
+// MissingRepoDirs lists repoDirs that do not exist as directories. They are
+// warnings, not errors: a config shared between machines may name folders
+// that exist on only some of them.
+func (c *Config) MissingRepoDirs() []string {
+	var missing []string
+	for _, p := range c.RepoDirPaths {
+		if st, err := os.Stat(p); err != nil || !st.IsDir() {
+			missing = append(missing, p)
+		}
+	}
+	return missing
 }
 
 // AgentFor applies agent precedence: CLI flag, then workspace, then global.

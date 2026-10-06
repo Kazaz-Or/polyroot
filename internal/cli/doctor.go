@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"text/tabwriter"
@@ -93,6 +94,17 @@ func (a *app) doctorCmd() *cobra.Command {
 				cfg = nil
 			} else {
 				good("%s parses and all references resolve", cfg.File)
+				missing := cfg.MissingRepoDirs()
+				for _, d := range cfg.RepoDirPaths {
+					if slices.Contains(missing, d) {
+						note("repo directory %s does not exist; fix or remove it under repoDirs:", d)
+					} else {
+						good("repo directory %s", d)
+					}
+				}
+				if len(cfg.RepoDirPaths) == 0 {
+					note("no repoDirs configured; workspaces need full repository paths (add `repoDirs:` to use folder names)")
+				}
 			}
 
 			used := map[string]bool{}

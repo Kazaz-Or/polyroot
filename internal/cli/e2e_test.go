@@ -432,3 +432,69 @@ func TestHelpListsEverything(t *testing.T) {
 		}
 	}
 }
+
+// TestE2ERepoDirsAndCompletion: setup with repo directories, workspaces by
+// folder name, and shell completion through cobra's __complete entry point.
+func TestE2ERepoDirsAndCompletion(t *testing.T) {
+	e := setupE2E(t)
+	src := filepath.Dir(e.api)
+	for _, d := range []string{e.api, e.web, e.sdk} {
+		if err := os.MkdirAll(filepath.Join(d, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Remove(filepath.Join(e.root, "cfg", "config.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := run(t, "setup", "--agent", "claude", "--repo-dir", src); err != nil || !strings.Contains(out, "repo directories:") {
+		t.Fatalf("setup: %v\n%s", err, out)
+	}
+	t.Chdir(e.root) // folder names must not depend on the current directory
+	if out, err := run(t, "workspace", "add", "shop", "payments api", "web", "shared sdk"); err != nil {
+		t.Fatalf("add by folder name: %v\n%s", err, out)
+	}
+	rec, err := e.open(t, "shop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Cwd != e.api || !slices.Equal(rec.Args[:4], []string{"--add-dir", e.web, "--add-dir", e.sdk}) {
+		t.Errorf("launch: %q in %s", rec.Args, rec.Cwd)
+	}
+	if _, err := run(t, "workspace", "add", "shop", "wbe"); err == nil || !strings.Contains(err.Error(), `did you mean "web"`) {
+		t.Errorf("typo hint: %v", err)
+	}
+
+	complete := func(args ...string) []string {
+		out, err := run(t, append([]string{"__complete"}, args...)...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var items []string
+		for _, l := range strings.Split(strings.TrimSpace(out), "\n") {
+			if l != "" && !strings.HasPrefix(l, ":") && !strings.HasPrefix(l, "Completion ended") {
+				items = append(items, strings.SplitN(l, "\t", 2)[0])
+			}
+		}
+		return items
+	}
+	if got := complete("workspace", "add", "shop", "w"); !slices.Equal(got, []string{"web"}) {
+		t.Errorf("repo completion: %v", got)
+	}
+	if got := complete("workspace", "add", "shop", "web", ""); slices.Contains(got, "web") || !slices.Contains(got, "shared sdk") {
+		t.Errorf("repo completion should skip repos already typed: %v", got)
+	}
+	if got := complete("sh"); !slices.Contains(got, "shop") || !slices.Contains(got, "show") {
+		t.Errorf("root completion (workspaces + commands): %v", got)
+	}
+	if got := complete("open", "--agent", "co"); !slices.Equal(got, []string{"codex"}) {
+		t.Errorf("agent completion: %v", got)
+	}
+	if got := complete("workspace", "remove", ""); !slices.Equal(got, []string{"shop"}) {
+		t.Errorf("remove completion: %v", got)
+	}
+
+	out, _ := run(t, "doctor")
+	if !strings.Contains(out, "✓ repo directory "+src) {
+		t.Errorf("doctor should list repo directories:\n%s", out)
+	}
+}
