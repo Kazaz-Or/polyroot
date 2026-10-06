@@ -89,6 +89,9 @@ jobs:
           git tag -a "$TAG" -m "Polyroot $TAG"
           git push origin "$TAG"
 
+      - name: Record Go version for the release notes
+        run: echo "GOVERSION=$(go env GOVERSION)" >> "$GITHUB_ENV"
+
       - name: Build and release
         uses: goreleaser/goreleaser-action@v7
         with:

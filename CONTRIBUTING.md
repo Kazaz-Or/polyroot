@@ -53,6 +53,11 @@ The resolver (`internal/workspace`) must never learn about a specific agent.
 
 ## Pull requests
 
+- Use [Conventional Commits](https://www.conventionalcommits.org/) for commit
+  and PR titles: `feat: ...`, `fix: ...`, `docs: ...`, `ci: ...`,
+  `refactor: ...`. Release notes are grouped by these prefixes; anything
+  else is listed under "Other changes".
+
 - Keep changes focused, and add tests for behavior changes.
 - Update `CHANGELOG.md` under "Unreleased".
 - By contributing you agree your work is licensed under the MIT license.
