@@ -13,14 +13,9 @@
 <p align="center">
   <a href="https://github.com/Kazaz-Or/polyroot/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Kazaz-Or/polyroot/actions/workflows/ci.yml/badge.svg?branch=master"></a>
   <a href="https://github.com/Kazaz-Or/polyroot/actions/workflows/codeql.yml"><img alt="CodeQL" src="https://github.com/Kazaz-Or/polyroot/actions/workflows/codeql.yml/badge.svg?branch=master"></a>
-  <a href="https://goreportcard.com/report/github.com/Kazaz-Or/polyroot"><img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/Kazaz-Or/polyroot"></a>
   <a href="https://github.com/Kazaz-Or/polyroot/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Kazaz-Or/polyroot?sort=semver&label=release"></a>
-  <a href="https://pkg.go.dev/github.com/Kazaz-Or/polyroot"><img alt="Go Reference" src="https://pkg.go.dev/badge/github.com/Kazaz-Or/polyroot.svg"></a>
-  <br>
-  <a href="go.mod"><img alt="Go version" src="https://img.shields.io/github/go-mod/go-version/Kazaz-Or/polyroot"></a>
   <img alt="Platforms" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey">
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/Kazaz-Or/polyroot"></a>
-  <a href="https://github.com/Kazaz-Or/polyroot/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Kazaz-Or/polyroot/total"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <a href="CONTRIBUTING.md"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg"></a>
 </p>
 
