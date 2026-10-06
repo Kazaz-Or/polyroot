@@ -27,20 +27,5 @@ release:
   github:
     owner: Kazaz-Or
     name: polyroot
-  draft: true
-
-homebrew_casks:
-  - name: polyroot
-    repository:
-      owner: Kazaz-Or
-      name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    homepage: https://github.com/Kazaz-Or/polyroot
-    description: Multi-repo workspaces for coding agents
-    license: MIT
-    hooks:
-      post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/polyroot"]
-          end
+  draft: true      # the Release workflow publishes it unless "draft" is chosen
+  prerelease: auto  # v1.2.0-rc.1 is marked as a pre-release

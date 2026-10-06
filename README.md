@@ -25,7 +25,7 @@
 </p>
 
 <p align="center">
-  <img alt="Polyroot demo: list, show, and open a workspace in Claude Code" src="docs/assets/demo.gif" width="760">
+  <img alt="Polyroot demo: setup, create a workspace from repo paths, and open it in Claude Code" src="docs/assets/demo.gif" width="760">
 </p>
 
 ---
@@ -35,7 +35,9 @@ logical codebase once and open it with **Claude Code, Codex CLI, Gemini CLI,
 OpenCode, Pi**, and other coding agents.
 
 ```bash
-polyroot open payments
+polyroot setup                                                    # once
+polyroot workspace add payments ~/git/payments-api ~/git/payments-web ~/git/shared-sdk
+polyroot payments                                                 # opens your agent on all three
 ```
 
 - No duplicate clones.
@@ -55,8 +57,8 @@ polyroot open payments
 - [Security and privacy](#security-and-privacy)
 - [FAQ](#faq)
 - [Non-goals](#non-goals)
-- [Roadmap](#roadmap)
 - [Contributing](#contributing)
+- [Contributors](#contributors)
 - [License](#license)
 
 ## Why
@@ -116,11 +118,33 @@ logical workspace → repos + shared groups → workspace context
 
 ## Installation
 
+**Install script (macOS and Linux):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Kazaz-Or/polyroot/master/install.sh | sh
+```
+
+The script detects your OS and CPU, downloads the matching release archive,
+verifies its SHA-256 checksum, and installs `polyroot` to `~/.local/bin`. It
+never uses sudo. You can change the version or install directory:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Kazaz-Or/polyroot/master/install.sh \
+  | POLYROOT_VERSION=v0.1.0 POLYROOT_INSTALL_DIR=/usr/local/bin sh
+```
+
+Prefer to read it first? `curl -fsSLO …/install.sh && less install.sh && sh install.sh`.
+
+**Other methods:**
+
 | Method | Command |
 |---|---|
-| Homebrew (macOS, Linux) | `brew install kazaz-or/tap/polyroot` |
 | Go 1.24+ | `go install github.com/Kazaz-Or/polyroot/cmd/polyroot@latest` |
 | Binary | download from [Releases](https://github.com/Kazaz-Or/polyroot/releases) |
+| From source | `git clone https://github.com/Kazaz-Or/polyroot && cd polyroot && go build ./cmd/polyroot` |
+
+To uninstall, run `rm ~/.local/bin/polyroot`. Optionally also delete
+`~/.config/polyroot` and `~/.cache/polyroot`.
 
 Supported platforms:
 
@@ -129,7 +153,7 @@ Supported platforms:
 | macOS | ✅ | ✅ (Apple silicon) |
 | Linux | ✅ | ✅ |
 
-Windows isn't supported yet ([roadmap](#roadmap)).
+Windows isn't supported.
 
 <details>
 <summary>Install from a release archive manually</summary>
@@ -148,43 +172,66 @@ Checksums are published as `checksums.txt` with every release.
 
 ## Quick start
 
-1. Install at least one supported agent and Polyroot, then check what was
-   found:
+1. **Set up once.** Pick your default coding agent:
+
+   ```console
+   $ polyroot setup
+   Which coding agent should Polyroot use by default?
+   > claude    Claude Code  (installed)
+     codex     Codex CLI    (installed)
+     gemini    Gemini CLI
+     opencode  OpenCode
+     pi        Pi
+   Created ~/.config/polyroot/config.yaml (default agent: claude)
+   ```
+
+   Use `polyroot setup --agent codex` to skip the prompt.
+
+2. **Create a workspace** from the paths of its repositories. The first path
+   is the *primary* repository, where the agent starts:
+
+   ```console
+   $ polyroot workspace add payments ~/git/payments-api ~/git/payments-web ~/git/shared-sdk
+   Registered repo payments-api: ~/git/payments-api
+   Registered repo payments-web: ~/git/payments-web
+   Registered repo shared-sdk: ~/git/shared-sdk
+   Created workspace "payments": primary payments-api, plus payments-web, shared-sdk
+
+   Open it:  polyroot payments
+   ```
+
+   Run `polyroot workspace add` with no arguments to be prompted for the name,
+   the paths and an optional description for the agent. Create as many
+   workspaces as you like; a repository can be in any number of them:
 
    ```bash
-   polyroot agents
+   polyroot workspace add gaming ~/git/gaming-api ~/git/shared-sdk --agent codex
+   polyroot workspace add payments ~/git/helm          # add a repo to an existing workspace
+   polyroot workspace remove gaming
    ```
 
-2. Create `~/.config/polyroot/config.yaml`:
-
-   ```yaml
-   version: 1
-   defaultAgent: claude
-
-   repos:
-     payments-api: ~/git/payments-api
-     payments-web: ~/git/payments-web
-     shared-sdk: ~/git/shared-sdk
-
-   workspaces:
-     payments:
-       primary: payments-api
-       repos: [payments-web, shared-sdk]
-   ```
-
-3. Check it and open it:
+3. **Open it:**
 
    ```bash
-   polyroot validate
-   polyroot open payments
+   polyroot payments                                   # same as: polyroot open payments
+   polyroot payments --agent gemini                    # another agent, this time
+   polyroot payments -- --model opus                   # pass arguments to the agent
    ```
+
+Everything ends up in a plain YAML file you can also [edit by hand](#configuration).
+Polyroot's commands edit it in place, so your comments and manual changes are
+kept, and the previous version is saved as `config.yaml.bak`.
 
 ## Configuration
 
+`polyroot setup` and `polyroot workspace` write the config for you. You can
+also edit it by hand for anything they don't cover: groups of shared
+repositories, context files, per-workspace agents and custom agents. A
+complete, commented example is in [`examples/config.yaml`](examples/config.yaml).
+
 The config file is `config.yaml` in `$POLYROOT_CONFIG_HOME`, else
 `$XDG_CONFIG_HOME/polyroot`, else `~/.config/polyroot`. The same rule applies
-on macOS. A complete, commented example is in
-[`examples/config.yaml`](examples/config.yaml).
+on macOS.
 
 ```yaml
 version: 1
@@ -342,6 +389,10 @@ no `eval`.
 
 | Command | Description |
 |---|---|
+| `polyroot setup [--agent A]` | First-time setup: choose the default agent and create the config |
+| `polyroot workspace add <name> <path>... [--primary P] [--agent A]` | Create a workspace from repository paths (first path is the primary), or add repositories to an existing one. No arguments: interactive |
+| `polyroot workspace remove <name>` | Remove a workspace. Its repositories stay registered |
+| `polyroot <ws> [--agent A] [-- args]` | Open the workspace (shorthand for `open`) |
 | `polyroot open <ws> [--agent A] [-- args]` | Launch the agent on the workspace. Arguments after `--` are forwarded unchanged |
 | `polyroot command <ws> [--agent A] [-- args]` | Print the exact launch spec (cwd, env, generated files, argv) without running it |
 | `polyroot list` | List workspaces |
@@ -350,11 +401,15 @@ no `eval`.
 | `polyroot agents` | Detected agents, versions and capabilities |
 | `polyroot doctor` | Full diagnostics with suggested fixes |
 | `polyroot completion <bash\|zsh\|fish>` | Print a shell completion script |
+| `polyroot help [command]` | List every command and flag, or show one command's options |
 
 Global flags: `-q/--quiet` (errors only), `-v/--verbose` (`open` prints the
 launch spec first, `command` also prints the generated files, `agents` lists
-problems), `-h/--help`, `--version`. Output has no colors, so `NO_COLOR` is
-always respected.
+problems), `-h/--help`, `--version`. `polyroot help` lists everything, and
+every command has its own `--help`.
+
+Interactive prompts (`setup`, `workspace add`) need a terminal. Set
+`ACCESSIBLE=1` for plain line-by-line prompts that work with screen readers.
 
 ### Environment variables
 
@@ -362,6 +417,7 @@ always respected.
 |---|---|
 | `POLYROOT_CONFIG_HOME` | Directory containing `config.yaml` (default `$XDG_CONFIG_HOME/polyroot` or `~/.config/polyroot`) |
 | `POLYROOT_CACHE_HOME` | Directory for per-launch generated files (default `$XDG_CACHE_HOME/polyroot` or `~/.cache/polyroot`) |
+| `ACCESSIBLE` | Set to `1` for plain, screen-reader friendly prompts in `setup` and `workspace add` |
 | `XDG_CONFIG_HOME`, `XDG_CACHE_HOME` | Standard XDG base directories, used on macOS too |
 | any `$VAR` | Expanded in repository paths, context paths and agent `command` paths. Unset variables are errors |
 
@@ -499,17 +555,11 @@ multiplexer, dependency manager or build system. It does one job: **map a
 logical multi-repository codebase onto the workspace primitives of coding
 agents.**
 
-## Roadmap
-
-- More agents: GitHub Copilot CLI, Aider, Goose, Kiro CLI, Mistral Vibe
-  ([request one](https://github.com/Kazaz-Or/polyroot/issues/new?template=agent_support.yml))
-- Windows support
-- Optional split config files (`workspaces/*.yaml`)
-- Install shell completions automatically with Homebrew
-
 ## Contributing
 
-Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) and
+Found a bug, have a question, or want support for another agent? Feel free to
+[open an issue](https://github.com/Kazaz-Or/polyroot/issues/new/choose) or
+send a pull request. Contributions of any size are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) and
 the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ```bash
@@ -521,6 +571,14 @@ go build ./cmd/polyroot
 Every pull request runs lint, `govulncheck`, unit tests and end-to-end tests
 on Linux (amd64, arm64) and macOS (Apple silicon, Intel). See
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
+## Contributors
+
+Thanks to everyone who has contributed to Polyroot.
+
+<a href="https://github.com/Kazaz-Or/polyroot/graphs/contributors">
+  <img alt="Contributors" src="https://contrib.rocks/image?repo=Kazaz-Or/polyroot" />
+</a>
 
 ## License
 

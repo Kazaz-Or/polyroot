@@ -1,28 +1,115 @@
 name: Release
 
+# Manual, owner-only release: Actions → Release → Run workflow.
+# Computes the next version from the latest v* tag, runs the tests, pushes
+# the tag, builds with GoReleaser and publishes the GitHub release.
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump from the latest tag (ignored when "version" is set)
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      version:
+        description: Exact version instead of a bump, e.g. v0.1.0 or v0.2.0-rc.1 (optional)
+        type: string
+        required: false
+      draft:
+        description: Create the release as a draft (publish it yourself later)
+        type: boolean
+        default: false
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  goreleaser:
+  release:
+    # Only the repository owner may release. Anyone else's run, or a re-run
+    # started by someone else, is skipped before any step executes.
+    if: >-
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Compute version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+          EXPLICIT: ${{ inputs.version }}
+        run: |
+          semver='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$'
+          latest=$(git tag --list 'v*' --sort=-v:refname | grep -E "$semver" | grep -v -- - | head -n1 || true)
+          latest=${latest:-v0.0.0}
+          if [ -n "$EXPLICIT" ]; then
+            next=$EXPLICIT
+            case "$next" in v*) ;; *) next="v$next" ;; esac
+          else
+            IFS=. read -r major minor patch <<< "${latest#v}"
+            case "$BUMP" in
+              major) next="v$((major + 1)).0.0" ;;
+              minor) next="v${major}.$((minor + 1)).0" ;;
+              patch) next="v${major}.${minor}.$((patch + 1))" ;;
+            esac
+          fi
+          if ! [[ "$next" =~ $semver ]]; then
+            echo "::error::'$next' is not a valid version (expected vMAJOR.MINOR.PATCH[-prerelease])"; exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/$next" >/dev/null; then
+            echo "::error::tag $next already exists"; exit 1
+          fi
+          echo "Releasing $next (previous stable: $latest)"
+          echo "tag=$next" >> "$GITHUB_OUTPUT"
+
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: go test ./...
-      - uses: goreleaser/goreleaser-action@v7
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: Tag
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Polyroot $TAG"
+          git push origin "$TAG"
+
+      - name: Build and release
+        uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Fine-grained token with contents:write on Kazaz-Or/homebrew-tap.
-          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+      - name: Publish
+        if: ${{ !inputs.draft }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: gh release edit "$TAG" --draft=false --repo "$GITHUB_REPOSITORY"
+
+      - name: Summary
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          DRAFT: ${{ inputs.draft }}
+        run: |
+          {
+            echo "### Polyroot $TAG"
+            if [ "$DRAFT" = "true" ]; then echo "Draft release created; publish it from the Releases page."; else echo "Published."; fi
+            echo "https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
+          } >> "$GITHUB_STEP_SUMMARY"
