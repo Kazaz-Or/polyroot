@@ -1,0 +1,20 @@
+name: Agent support
+description: Request support for a new coding agent, or report changed agent behavior
+labels: [agent]
+body:
+  - type: input
+    id: agent
+    attributes:
+      label: Agent and version
+    validations: {required: true}
+  - type: textarea
+    id: mechanism
+    attributes:
+      label: Native multi-directory / instructions mechanism
+      description: Link the official docs or source for how the agent supports extra directories and extra instructions.
+    validations: {required: true}
+  - type: textarea
+    id: help
+    attributes:
+      label: Output of `<agent> --help`
+      render: text

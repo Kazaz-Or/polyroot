@@ -1,0 +1,77 @@
+# Polyroot configuration.
+# Location: $POLYROOT_CONFIG_HOME/config.yaml, else $XDG_CONFIG_HOME/polyroot/config.yaml,
+# else ~/.config/polyroot/config.yaml. Relative paths resolve against this file's directory.
+version: 1
+
+# Used when neither --agent nor the workspace's defaultAgent is set.
+defaultAgent: claude
+
+# Every physical repository, registered once. `name: path` is shorthand for `name: {path: path}`.
+# Paths may use ~, $HOME, ${VAR}; an unset variable is an error.
+repos:
+  payments-api:
+    path: ~/git/payments-api
+  payments-web: ~/git/payments-web
+  payments-worker: ~/git/payments-worker
+  gaming-api: ~/git/gaming-api
+  gaming-web: ~/git/gaming-web
+  shared-sdk: ~/git/shared-sdk
+  helm: ~/git/helm
+  terraform: ${HOME}/git/terraform
+  e2e: ~/git/e2e
+
+# Reusable sets of repositories. Groups may include other groups (no cycles).
+groups:
+  infra:
+    repos: [helm, terraform]
+  platform:
+    repos: [shared-sdk]
+    groups: [infra]
+
+# Logical codebases. The same repository can appear in any number of them.
+workspaces:
+  payments:
+    primary: payments-api          # the agent's working directory
+    repos: [payments-web, payments-worker, e2e]
+    groups: [platform]
+    context: contexts/payments.md  # workspace-level notes for the agent
+
+  gaming:
+    primary: gaming-api
+    repos: [gaming-web]
+    groups: [platform]
+    defaultAgent: codex            # overrides the global default
+
+# Optional: customize how agents are launched. Three forms:
+agents:
+  # 1. Override a built-in agent. Every `polyroot open ... --agent claude`
+  #    (and every workspace defaulting to claude) gets these settings.
+  claude:
+    args: [--permission-mode, acceptEdits]   # added on every launch, before args after `--`
+    # command: ~/bin/claude-wrapper          # different executable (name in PATH or path)
+    # env:
+    #   CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "0"   # config env wins over Polyroot's
+
+  # 2. A new name based on a built-in. It inherits the built-in's overrides above.
+  claude-opus:
+    extends: claude
+    args: [--model, opus]
+
+  # Opt-in "no permission prompts" variant. Use only where you accept the risk.
+  claude-yolo:
+    extends: claude
+    args: [--dangerously-skip-permissions]
+
+  codex-search:
+    extends: codex
+    args: [--search]
+
+  # 3. A generic command adapter for agents Polyroot doesn't know. Each flag and
+  #    value is a separate argv element; nothing goes through a shell.
+  # my-agent:
+  #   command: my-agent
+  #   args: [--tui]
+  #   addDirFlag: --add-dir        # repeated once per additional repository (required for multi-repo)
+  #   contextFlag: --rules-file    # receives the generated workspace instructions file
+  #   env:
+  #     MY_AGENT_MODE: multi-repo

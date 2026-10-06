@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then echo "Run gofmt -w on:"; echo "$unformatted"; exit 1; fi
+      - name: go mod tidy
+        run: go mod tidy -diff
+      - run: go mod verify
+      - run: go vet ./...
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.14.0
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest      # Linux amd64
+          - ubuntu-24.04-arm   # Linux arm64
+          - macos-latest       # macOS arm64
+          - macos-15-intel     # macOS amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # Unit + end-to-end tests. E2E launches fake agent binaries through the
+      # real `polyroot open` path; real agents are not required.
+      - name: Test
+        run: go test -race -shuffle=on -coverprofile=coverage.out ./...
+      - name: Coverage
+        run: go tool cover -func=coverage.out | tail -1
+      - name: Smoke test the binary
+        shell: bash
+        run: |
+          go build -o polyroot ./cmd/polyroot
+          ./polyroot --version
+          export POLYROOT_CONFIG_HOME="$RUNNER_TEMP/cfg" POLYROOT_CACHE_HOME="$RUNNER_TEMP/cache"
+          mkdir -p "$POLYROOT_CONFIG_HOME" "$RUNNER_TEMP/src/api" "$RUNNER_TEMP/src/web with space"
+          cat > "$POLYROOT_CONFIG_HOME/config.yaml" <<YAML
+          version: 1
+          defaultAgent: claude
+          repos:
+            api: $RUNNER_TEMP/src/api
+            web: $RUNNER_TEMP/src/web with space
+          workspaces:
+            demo: {primary: api, repos: [web]}
+          YAML
+          ./polyroot list
+          ./polyroot show demo
+          ./polyroot validate
+          for agent in claude codex gemini opencode pi; do ./polyroot command demo --agent "$agent" -- --example-arg; done
+          ./polyroot agents
+
+  release-check:
+    name: Release config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Cross-compile all release targets
+        run: |
+          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
+            echo "building $target"
+            GOOS=${target%/*} GOARCH=${target#*/} CGO_ENABLED=0 go build -o /dev/null ./cmd/polyroot
+          done
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: check

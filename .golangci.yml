@@ -1,0 +1,18 @@
+version: "2"
+linters:
+  enable:
+    - errorlint
+    - gocritic
+    - misspell
+    - unconvert
+  settings:
+    errcheck:
+      # Terminal output and best-effort cleanup.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (*text/tabwriter.Writer).Flush
+        - os.RemoveAll
+    gocritic:
+      disabled-checks: [ifElseChain]
