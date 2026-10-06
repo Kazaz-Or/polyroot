@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `polyroot setup` (first-time default agent) and `polyroot workspace add|remove`, which edit the
   config in place, keeping comments and manual changes (previous file saved as `config.yaml.bak`).
 - `polyroot <workspace>` as a shorthand for `polyroot open <workspace>`.
+- `repoDirs`: directories that hold your code, set during `polyroot setup`. Workspaces name
+  repositories by folder name; typos get a "did you mean" hint. Repositories don't need Git.
+- Shell completion (bash, zsh, fish) for workspaces, repository names and agents.
 - Commands: `open`, `command`, `list`, `show`, `validate`, `agents`, `doctor`, `help`.
 - CI on Linux (amd64, arm64) and macOS (arm64, amd64) with end-to-end launch tests.
 - `install.sh`: one-line installer for macOS and Linux with SHA-256 verification.

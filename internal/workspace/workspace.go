@@ -19,6 +19,9 @@ type Repo struct {
 	Via string
 	// Instructions are repo-owned instruction files found at the repo root.
 	Instructions []string
+	// Git reports whether the directory is under Git. Repositories do not
+	// have to be.
+	Git bool
 }
 
 // Resolved is a fully resolved workspace. Repos[0] is always the primary.
@@ -101,7 +104,7 @@ func Resolve(cfg *config.Config, name string) (*Resolved, error) {
 			problems = append(problems, fmt.Sprintf("  %s: %s: %v", n, shown, repo.PathErr))
 			continue
 		}
-		res.Repos = append(res.Repos, Repo{Name: n, Path: repo.Path, Via: via[i], Instructions: findInstructions(repo.Path)})
+		res.Repos = append(res.Repos, Repo{Name: n, Path: repo.Path, Via: via[i], Instructions: findInstructions(repo.Path), Git: IsGitRepo(repo.Path)})
 	}
 	if len(problems) > 0 {
 		return nil, fmt.Errorf("workspace %q has unusable repositories:\n%s\nfix the `path:` in %s or clone the repository there",
@@ -147,8 +150,9 @@ func Instructions(r *Resolved) (string, error) {
 		}
 	}
 	b.WriteString(`
-Each repository is an independent Git repository. Run Git operations from the
-appropriate repository root. A task may affect multiple repositories. When
+Each repository is independent. Repositories marked (no Git) are not under
+version control; for the others, run Git operations from that repository's
+root. A task may affect multiple repositories. When
 investigating a product-level issue, search across the available repositories
 when relevant. Files listed in brackets are repository-owned instructions;
 read them before changing code in that repository if they are not already in
@@ -172,6 +176,9 @@ your context.
 
 func writeRepo(b *strings.Builder, r Repo) {
 	fmt.Fprintf(b, "- %s: %s", r.Name, r.Path)
+	if !r.Git {
+		b.WriteString(" (no Git)")
+	}
 	if len(r.Instructions) > 0 {
 		fmt.Fprintf(b, " [%s]", strings.Join(r.Instructions, ", "))
 	}

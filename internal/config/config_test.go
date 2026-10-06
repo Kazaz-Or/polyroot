@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -281,4 +282,58 @@ agents:
 	if _, err := Parse([]byte("version: 1\nagents: {x: {command: $POLYROOT_NOPE/x}}\n"), filepath.Join(root, "c.yaml")); err == nil {
 		t.Error("unset variable in command must fail")
 	}
+}
+
+func TestResolveRepo(t *testing.T) {
+	root := writeRepos(t, "git/api", "git/web", "git/shared", "work/shared", "work/helm", "here/local", "outside/x")
+	t.Setenv("PR_TEST_ROOT", root)
+	for _, r := range []string{"git/api", "git/web", "work/helm"} {
+		if err := os.MkdirAll(filepath.Join(root, r, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := parse(t, root, `
+version: 1
+repoDirs: [git, $PR_TEST_ROOT/work, missing-dir]
+repos:
+  registered: outside/x
+`)
+	cwd := filepath.Join(root, "here")
+	cases := []struct{ ref, wantName, wantPath, wantErr string }{
+		{"registered", "registered", root + "/outside/x", ""},        // 1. registered name
+		{"api", "", root + "/git/api", ""},                           // 2. folder in a repo dir
+		{"helm", "", root + "/work/helm", ""},                        // 2. second repo dir
+		{"local", "", root + "/here/local", ""},                      // 3. relative to cwd
+		{"./local", "", root + "/here/local", ""},                    // explicit path
+		{root + "/outside/x", "registered", root + "/outside/x", ""}, // path of a registered repo
+		{"shared", "", "", "several repo directories"},               // ambiguous
+		{"wbe", "", "", `did you mean "web"`},                        // typo
+		{"nothing-like-it", "", "", "no repository"},
+	}
+	for _, c := range cases {
+		name, path, err := cfg.ResolveRepo(c.ref, cwd)
+		if c.wantErr != "" {
+			if err == nil || !strings.Contains(err.Error(), c.wantErr) {
+				t.Errorf("%q: want error %q, got %v", c.ref, c.wantErr, err)
+			}
+			continue
+		}
+		if err != nil || name != c.wantName || path != c.wantPath {
+			t.Errorf("%q: got (%q, %q, %v), want (%q, %q)", c.ref, name, path, err, c.wantName, c.wantPath)
+		}
+	}
+	if got := cfg.MissingRepoDirs(); len(got) != 1 || !strings.HasSuffix(got[0], "missing-dir") {
+		t.Errorf("MissingRepoDirs: %v", got)
+	}
+	// Candidates: registered names plus every folder directly inside repoDirs,
+	// Git or not ("shared" is in two dirs and listed once).
+	if got := cfg.RepoCandidates(); !slices.Equal(got, []string{"api", "helm", "registered", "shared", "web"}) {
+		t.Errorf("candidates: %v", got)
+	}
+}
+
+func TestRepoDirsUnsetVariable(t *testing.T) {
+	root := writeRepos(t)
+	cfg := parse(t, root, "version: 1\nrepoDirs: [$PR_TEST_NOT_SET/x]\n")
+	checkHas(t, cfg, "repoDirs entry")
 }

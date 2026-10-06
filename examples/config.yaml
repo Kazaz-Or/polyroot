@@ -9,6 +9,13 @@ version: 1
 # Used when neither --agent nor the workspace's defaultAgent is set.
 defaultAgent: claude
 
+# Directories that hold your code. `polyroot workspace add` accepts folder
+# names from these instead of full paths (Git is not required). Add as many
+# as you like; missing ones are reported by `polyroot doctor`, not fatal.
+repoDirs:
+  - ~/git
+  - ~/work
+
 # Every physical repository, registered once. `name: path` is shorthand for `name: {path: path}`.
 # Paths may use ~, $HOME, ${VAR}; an unset variable is an error.
 repos:

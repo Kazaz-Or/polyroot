@@ -55,6 +55,7 @@ func setup(t *testing.T) *config.Config {
 			t.Fatal(err)
 		}
 	}
+	must(t, os.MkdirAll(filepath.Join(root, "git/payments api/.git"), 0o755)) // the others are plain folders
 	must(t, os.WriteFile(filepath.Join(root, "git/payments-web/AGENTS.md"), []byte("# web"), 0o644))
 	must(t, os.WriteFile(filepath.Join(root, "git/helm/CLAUDE.md"), []byte("# helm"), 0o644))
 	must(t, os.MkdirAll(filepath.Join(root, "contexts"), 0o755))
@@ -160,10 +161,10 @@ func TestInstructions(t *testing.T) {
 	must(t, err)
 	for _, want := range []string{
 		"# Polyroot Workspace: payments",
-		"- payments-api: " + ws.Primary().Path + "\n",
-		"/payments-web [AGENTS.md]\n",
-		"/helm [CLAUDE.md]\n",
-		"independent Git repository",
+		"- payments-api: " + ws.Primary().Path + "\n", // Git repo: no marker
+		"/payments-web (no Git) [AGENTS.md]\n",
+		"/helm (no Git) [CLAUDE.md]\n",
+		"Each repository is independent",
 		"web -> api -> worker\n",
 	} {
 		if !strings.Contains(text, want) {

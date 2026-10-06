@@ -64,6 +64,15 @@ func (d *Document) SetDefaultAgent(name string) {
 	mapSet(d.top(), "defaultAgent", scalar(name))
 }
 
+// SetRepoDirs sets the directories that hold repositories.
+func (d *Document) SetRepoDirs(dirs []string) {
+	seq := &yaml.Node{Kind: yaml.SequenceNode}
+	for _, dir := range dirs {
+		seq.Content = append(seq.Content, scalar(dir))
+	}
+	mapSet(d.top(), "repoDirs", seq)
+}
+
 // AddRepo registers a repository unless the name already exists.
 func (d *Document) AddRepo(name, path string) {
 	repos := d.section("repos")

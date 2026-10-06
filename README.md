@@ -30,9 +30,9 @@ logical codebase once and open it with **Claude Code, Codex CLI, Gemini CLI,
 OpenCode, Pi**, and other coding agents.
 
 ```bash
-polyroot setup                                                    # once
-polyroot workspace add payments ~/git/payments-api ~/git/payments-web ~/git/shared-sdk
-polyroot payments                                                 # opens your agent on all three
+polyroot setup                                                     # once: agent + where your repos live
+polyroot workspace add payments payments-api payments-web shared-sdk
+polyroot payments                                                  # opens your agent on all three
 ```
 
 - No duplicate clones.
@@ -167,7 +167,8 @@ Checksums are published as `checksums.txt` with every release.
 
 ## Quick start
 
-1. **Set up once.** Pick your default coding agent:
+1. **Set up once.** Pick your default coding agent and the directories that
+   hold your code:
 
    ```console
    $ polyroot setup
@@ -177,31 +178,48 @@ Checksums are published as `checksums.txt` with every release.
      gemini    Gemini CLI
      opencode  OpenCode
      pi        Pi
-   Created ~/.config/polyroot/config.yaml (default agent: claude)
+
+   Where do you keep your code?
+   > ~/git, ~/work
+
+   Created ~/.config/polyroot/config.yaml
+     default agent:    claude
+     repo directories: ~/git, ~/work
    ```
 
-   Use `polyroot setup --agent codex` to skip the prompt.
+   Without prompts: `polyroot setup --agent claude --repo-dir ~/git --repo-dir ~/work`.
+   You can add more directories later under `repoDirs:` in the config.
 
-2. **Create a workspace** from the paths of its repositories. The first path
-   is the *primary* repository, where the agent starts:
+2. **Create a workspace** by naming its repositories. The first one is the
+   *primary* repository, where the agent starts:
 
    ```console
-   $ polyroot workspace add payments ~/git/payments-api ~/git/payments-web ~/git/shared-sdk
+   $ polyroot workspace add payments payments-api payments-web shared-sdk
    Registered repo payments-api: ~/git/payments-api
    Registered repo payments-web: ~/git/payments-web
-   Registered repo shared-sdk: ~/git/shared-sdk
+   Registered repo shared-sdk: ~/work/shared-sdk
    Created workspace "payments": primary payments-api, plus payments-web, shared-sdk
 
    Open it:  polyroot payments
    ```
 
-   Run `polyroot workspace add` with no arguments to be prompted for the name,
-   the paths and an optional description for the agent. Create as many
-   workspaces as you like; a repository can be in any number of them:
+   Repository names are looked up in this order:
+   1. a repository you already registered;
+   2. a folder of that name in one of your repo directories;
+   3. a path relative to where you are.
+
+   Full or relative paths work too (`~/other/tool`, `../tool`, `.`). If a name
+   exists in two repo directories, Polyroot asks you to pass the path instead
+   of guessing, and a typo gets a "did you mean" hint. Press <kbd>Tab</kbd> to
+   complete names (see [Tab completion](#tab-completion)).
+
+   Create as many workspaces as you like. A repository can be in any number of
+   them:
 
    ```bash
-   polyroot workspace add gaming ~/git/gaming-api ~/git/shared-sdk --agent codex
-   polyroot workspace add payments ~/git/helm          # add a repo to an existing workspace
+   polyroot workspace add gaming gaming-api shared-sdk --agent codex
+   polyroot workspace add payments helm                 # add a repo to an existing workspace
+   polyroot workspace add                               # interactive: prompts for everything
    polyroot workspace remove gaming
    ```
 
@@ -217,6 +235,20 @@ Everything ends up in a plain YAML file you can also [edit by hand](#configurati
 Polyroot's commands edit it in place, so your comments and manual changes are
 kept, and the previous version is saved as `config.yaml.bak`.
 
+### Tab completion
+
+Polyroot completes workspace names, repository names (every folder in your
+repo directories, plus registered repos), commands and `--agent` values. Enable it
+once for your shell:
+
+| Shell | Add to your shell config |
+|---|---|
+| zsh | `source <(polyroot completion zsh)` in `~/.zshrc` (after `compinit`) |
+| bash | `source <(polyroot completion bash)` in `~/.bashrc` (needs bash 4.1+ and the `bash-completion` package; on macOS: `brew install bash bash-completion@2`) |
+| fish | `polyroot completion fish > ~/.config/fish/completions/polyroot.fish` |
+
+Then open a new shell and try `polyroot workspace add payments pay<Tab>`.
+
 ## Configuration
 
 `polyroot setup` and `polyroot workspace` write the config for you. You can
@@ -231,6 +263,7 @@ on macOS.
 ```yaml
 version: 1
 defaultAgent: claude
+repoDirs: [~/git, ~/work]                # where your repos live (lets you use folder names)
 
 repos:                                   # every physical repo, registered once
   payments-api:
@@ -266,6 +299,7 @@ workspaces:
 |---|---|
 | `version` | Schema version. Must be `1` |
 | `defaultAgent` | Agent used when no `--agent` flag or workspace default is set |
+| `repoDirs` | Directories that hold your repositories. `polyroot workspace add` accepts folder names from them. Missing directories are reported by `validate` and `doctor` but are not fatal, so one config can be shared between machines |
 | `repos.<name>.path` | Directory of an existing repository. Accepts `~`, `$VAR`, `${VAR}`, absolute paths and paths relative to the config file. Paths with spaces work. An unset variable is an error |
 | `groups.<name>.repos` / `.groups` | Repositories and nested groups. Cycles are rejected |
 | `workspaces.<name>.primary` | Required. The agent's working directory |
@@ -299,10 +333,12 @@ Additional repositories:
 
 - payments-web: /Users/me/git/payments-web [AGENTS.md]
 - shared-sdk: /Users/me/git/shared-sdk
+- design-notes: /Users/me/work/design-notes (no Git)
 ...
 
-Each repository is an independent Git repository. Run Git operations from the
-appropriate repository root. ...
+Each repository is independent. Repositories marked (no Git) are not under
+version control; for the others, run Git operations from that repository's
+root. ...
 
 ---
 
@@ -384,8 +420,8 @@ no `eval`.
 
 | Command | Description |
 |---|---|
-| `polyroot setup [--agent A]` | First-time setup: choose the default agent and create the config |
-| `polyroot workspace add <name> <path>... [--primary P] [--agent A]` | Create a workspace from repository paths (first path is the primary), or add repositories to an existing one. No arguments: interactive |
+| `polyroot setup [--agent A] [--repo-dir DIR]...` | First-time setup: choose the default agent and your repository directories, and create the config |
+| `polyroot workspace add <name> <repo>... [--primary R] [--agent A]` | Create a workspace (the first repo is the primary), or add repositories to an existing one. A repo is a registered name, a folder name in your repo directories, or a path. No arguments: interactive |
 | `polyroot workspace remove <name>` | Remove a workspace. Its repositories stay registered |
 | `polyroot <ws> [--agent A] [-- args]` | Open the workspace (shorthand for `open`) |
 | `polyroot open <ws> [--agent A] [-- args]` | Launch the agent on the workspace. Arguments after `--` are forwarded unchanged |
@@ -395,7 +431,7 @@ no `eval`.
 | `polyroot validate [ws] [--agent A]` | Validate the config, repo paths and whether the agent can represent the workspace |
 | `polyroot agents` | Detected agents, versions and capabilities |
 | `polyroot doctor` | Full diagnostics with suggested fixes |
-| `polyroot completion <bash\|zsh\|fish>` | Print a shell completion script |
+| `polyroot completion <bash\|zsh\|fish>` | Print a shell completion script (see [Tab completion](#tab-completion)) |
 | `polyroot help [command]` | List every command and flag, or show one command's options |
 
 Global flags: `-q/--quiet` (errors only), `-v/--verbose` (`open` prints the
@@ -524,7 +560,12 @@ Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 
 **Does Polyroot clone, pull or switch branches?**
 No. It never runs Git commands that change anything. Every repository stays
-an independent Git repository that you manage.
+independent, and you manage it as usual.
+
+**Do my repositories have to use Git?**
+No. A "repository" is any directory, with or without Git. Plain project
+folders work the same way, and the workspace map tells the agent which ones
+aren't under version control.
 
 **Why not symlink everything into one directory?**
 Symlink farms confuse Git, tools and agents, and they hide the real
