@@ -108,8 +108,9 @@ logical workspace → repos + shared groups → workspace context
   to your repositories or your agents' global config.
 - **Fails loudly.** An agent that can't represent a workspace gets an error
   that explains why. Repositories are never dropped silently.
-- **Small and offline.** A single static Go binary with no daemon, database,
-  telemetry or network access.
+- **Small and offline.** A single static Go binary with no daemon, database
+  or telemetry. The only network access is `polyroot update`, and only when you
+  run it.
 
 ## Installation
 
@@ -137,6 +138,20 @@ Prefer to read it first? `curl -fsSLO …/install.sh && less install.sh && sh in
 | Go 1.26+ | `go install github.com/Kazaz-Or/polyroot/cmd/polyroot@latest` |
 | Binary | download from [Releases](https://github.com/Kazaz-Or/polyroot/releases) |
 | From source | `git clone https://github.com/Kazaz-Or/polyroot && cd polyroot && go build ./cmd/polyroot` |
+
+Then run `polyroot setup` (see [Quick start](#quick-start)).
+
+**Updating:**
+
+```bash
+polyroot update            # latest release (verified against checksums.txt)
+polyroot update --check    # just show current and latest versions
+polyroot update --version v0.1.0   # a specific release, also for downgrades
+```
+
+`polyroot update` replaces the binary it runs from, wherever you installed it.
+If that's a system directory such as `/usr/local/bin`, run it with `sudo` or
+re-run the install script.
 
 To uninstall, run `rm ~/.local/bin/polyroot`. Optionally also delete
 `~/.config/polyroot` and `~/.cache/polyroot`.
@@ -431,6 +446,7 @@ no `eval`.
 | `polyroot validate [ws] [--agent A]` | Validate the config, repo paths and whether the agent can represent the workspace |
 | `polyroot agents` | Detected agents, versions and capabilities |
 | `polyroot doctor` | Full diagnostics with suggested fixes |
+| `polyroot update [--check] [--version V] [--force]` | Update to the latest (or a given) release from GitHub, verified against its checksums |
 | `polyroot completion <bash\|zsh\|fish>` | Print a shell completion script (see [Tab completion](#tab-completion)) |
 | `polyroot help [command]` | List every command and flag, or show one command's options |
 
@@ -551,8 +567,10 @@ Adding an agent means one file implementing a three-method interface. See
 - Polyroot never writes to your repositories or to an agent's global
   configuration. Per-launch files live in `~/.cache/polyroot/run/<id>/` with
   mode `0600` and are removed when the agent exits.
-- There's no telemetry and no network access. Agent detection runs
-  `<agent> --version` and `--help` locally.
+- There's no telemetry. Polyroot only touches the network when you run
+  `polyroot update`, which downloads a release from GitHub and verifies it
+  against the release's `checksums.txt` before replacing the binary. Agent
+  detection runs `<agent> --version` and `--help` locally.
 
 Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 

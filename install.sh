@@ -88,4 +88,14 @@ case ":${PATH}:" in
     ;;
 esac
 say ""
-say "Next: create ~/.config/polyroot/config.yaml (see https://github.com/${REPO}#quick-start), then run: polyroot doctor"
+config_home="${POLYROOT_CONFIG_HOME:-${XDG_CONFIG_HOME:-${HOME}/.config}/polyroot}"
+if [ -f "${config_home}/config.yaml" ]; then
+  say "Your config is already set up (${config_home}/config.yaml). Run: polyroot doctor"
+else
+  say "Get started:"
+  say "  polyroot setup                                   # choose your agent and where your code lives"
+  say "  polyroot workspace add <name> <repo> <repo>...   # create a workspace"
+  say "  polyroot <name>                                  # open it"
+fi
+say ""
+say "Update later with: polyroot update"

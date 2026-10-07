@@ -112,12 +112,12 @@ Docs: https://github.com/Kazaz-Or/polyroot`,
 	root.AddGroup(
 		&cobra.Group{ID: "start", Title: "Set up:"},
 		&cobra.Group{ID: "use", Title: "Use workspaces:"},
-		&cobra.Group{ID: "check", Title: "Inspect and troubleshoot:"},
+		&cobra.Group{ID: "check", Title: "Inspect, troubleshoot and update:"},
 	)
 	for group, cmds := range map[string][]*cobra.Command{
 		"start": {a.setupCmd(), a.workspaceCmd()},
 		"use":   {a.openCmd(), a.listCmd(), a.showCmd(), a.commandCmd()},
-		"check": {a.validateCmd(), a.agentsCmd(), a.doctorCmd()},
+		"check": {a.validateCmd(), a.agentsCmd(), a.doctorCmd(), a.updateCmd(version)},
 	} {
 		for _, c := range cmds {
 			c.GroupID = group

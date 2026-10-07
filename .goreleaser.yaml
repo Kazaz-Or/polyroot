@@ -66,7 +66,8 @@ release:
     curl -fsSL https://raw.githubusercontent.com/Kazaz-Or/polyroot/master/install.sh | POLYROOT_VERSION={{ .Tag }} sh
     ```
 
-    or `go install github.com/Kazaz-Or/polyroot/cmd/polyroot@{{ .Tag }}`
+    or `go install github.com/Kazaz-Or/polyroot/cmd/polyroot@{{ .Tag }}`.
+    Already installed? Run `polyroot update`. New here? Run `polyroot setup` next.
 
     ### Downloads
 
