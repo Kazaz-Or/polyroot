@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -101,5 +103,25 @@ func TestListShowValidate(t *testing.T) {
 	}
 	if _, err = run(t, "show", "payments"); err == nil {
 		t.Fatal("show should fail on missing repo")
+	}
+}
+
+func TestUpdateCheck(t *testing.T) {
+	setupConfig(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/releases/latest" {
+			http.Redirect(w, r, "/releases/tag/v9.0.0", http.StatusFound)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("POLYROOT_RELEASES_URL", srv.URL+"/releases")
+
+	out, err := run(t, "update", "--check")
+	if err != nil || !strings.Contains(out, "latest:  v9.0.0") {
+		t.Fatalf("update --check: %v\n%s", err, out)
+	}
+	// The test binary reports version "test", which is not a release build.
+	if _, err := run(t, "update"); err == nil || !strings.Contains(err.Error(), "development build") {
+		t.Fatalf("update of a dev build must require --force: %v", err)
 	}
 }

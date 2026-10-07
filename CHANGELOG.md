@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `repoDirs`: directories that hold your code, set during `polyroot setup`. Workspaces name
   repositories by folder name; typos get a "did you mean" hint. Repositories don't need Git.
 - Shell completion (bash, zsh, fish) for workspaces, repository names and agents.
+- `polyroot update`: self-update to the latest (or a given) GitHub release, verified against
+  `checksums.txt`; `--check` reports versions without changing anything.
 - Commands: `open`, `command`, `list`, `show`, `validate`, `agents`, `doctor`, `help`.
 - CI on Linux (amd64, arm64) and macOS (arm64, amd64) with end-to-end launch tests.
 - `install.sh`: one-line installer for macOS and Linux with SHA-256 verification.
