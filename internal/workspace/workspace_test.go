@@ -177,3 +177,38 @@ func TestInstructions(t *testing.T) {
 		t.Error("workspace without context should not include a context section")
 	}
 }
+
+func TestNestedRepositories(t *testing.T) {
+	root := t.TempDir()
+	if real, err := filepath.EvalSymlinks(root); err == nil {
+		root = real
+	}
+	maestro := filepath.Join(root, "work", "maestro")
+	for _, d := range []string{"api/.git", "billing/.git", "docs", ".hidden/.git"} {
+		must(t, os.MkdirAll(filepath.Join(maestro, d), 0o755))
+	}
+	must(t, os.WriteFile(filepath.Join(maestro, "api", "AGENTS.md"), []byte("# api"), 0o644))
+	cfg, err := config.Parse([]byte("version: 1\nrepos: {maestro: work/maestro}\nworkspaces: {m: {primary: maestro}}\n"), filepath.Join(root, "config.yaml"))
+	must(t, err)
+	ws, err := Resolve(cfg, "m")
+	must(t, err)
+	got := ws.Primary().Nested
+	if len(got) != 2 || got[0].Name != "api" || got[1].Name != "billing" || len(got[0].Instructions) != 1 {
+		t.Fatalf("nested: %+v (only Git repos, no hidden dirs)", got)
+	}
+	text, err := Instructions(ws)
+	must(t, err)
+	for _, want := range []string{
+		"- maestro: " + maestro + " (folder containing 2 Git repositories)\n",
+		"  - api: " + filepath.Join(maestro, "api") + " [AGENTS.md]\n",
+		"  - billing: " + filepath.Join(maestro, "billing") + "\n",
+		"never in the folder itself",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("map missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "docs") {
+		t.Error("plain subfolders must not be listed as repositories")
+	}
+}

@@ -349,6 +349,10 @@ Additional repositories:
 - payments-web: /Users/me/git/payments-web [AGENTS.md]
 - shared-sdk: /Users/me/git/shared-sdk
 - design-notes: /Users/me/work/design-notes (no Git)
+- maestro: /Users/me/work/maestro (folder containing 3 Git repositories)
+  - api: /Users/me/work/maestro/api
+  - billing: /Users/me/work/maestro/billing [AGENTS.md]
+  - frontend: /Users/me/work/maestro/frontend
 ...
 
 Each repository is independent. Repositories marked (no Git) are not under
@@ -579,6 +583,14 @@ Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 **Does Polyroot clone, pull or switch branches?**
 No. It never runs Git commands that change anything. Every repository stays
 independent, and you manage it as usual.
+
+**Can a workspace be a whole folder of repositories?**
+Yes. Add the folder itself, for example `polyroot workspace add maestro maestro`
+when `~/work` is in your `repoDirs`. The agent starts in that folder and sees
+everything in it, including repositories cloned there later. Polyroot lists
+the Git repositories inside the folder (and their `AGENTS.md`/`CLAUDE.md`) in
+the workspace map, and `polyroot show` shows them too, so the agent knows they
+are separate repositories without having to explore first.
 
 **Do my repositories have to use Git?**
 No. A "repository" is any directory, with or without Git. Plain project

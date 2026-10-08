@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `polyroot <workspace>` as a shorthand for `polyroot open <workspace>`.
 - `repoDirs`: directories that hold your code, set during `polyroot setup`. Workspaces name
   repositories by folder name; typos get a "did you mean" hint. Repositories don't need Git.
+- A folder of repositories can be a workspace repository: the workspace map and `polyroot show`
+  list the Git repositories inside it, with their instruction files.
 - Shell completion (bash, zsh, fish) for workspaces, repository names and agents.
 - `polyroot update`: self-update to the latest (or a given) GitHub release, verified against
   `checksums.txt`; `--check` reports versions without changing anything.

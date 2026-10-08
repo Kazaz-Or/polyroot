@@ -341,6 +341,11 @@ func (a *app) showCmd() *cobra.Command {
 					note = strings.TrimSpace(note + " ERROR: " + r.PathErr.Error())
 				}
 				fmt.Fprintf(tw, "  %s\t%s\t%s\n", n, displayPath(r), note)
+				if r.PathErr == nil && !workspace.IsGitRepo(r.Path) {
+					for _, nested := range workspace.FindNested(r.Path) {
+						fmt.Fprintf(tw, "    └ %s\t%s\t%s\n", nested.Name, filepath.Join(r.Path, nested.Name), "[repo inside "+n+"]")
+					}
+				}
 			}
 			tw.Flush()
 			if ws.ContextPath != "" {
