@@ -22,7 +22,19 @@ type Repo struct {
 	// Git reports whether the directory is under Git. Repositories do not
 	// have to be.
 	Git bool
+	// Nested lists the Git repositories directly inside a folder that is not
+	// itself under Git (e.g. ~/work/maestro holding several repos).
+	Nested []Nested
 }
+
+// Nested is a Git repository found inside a non-Git workspace folder.
+type Nested struct {
+	Name         string
+	Instructions []string
+}
+
+// maxNested caps how many nested repositories are listed in the map.
+const maxNested = 100
 
 // Resolved is a fully resolved workspace. Repos[0] is always the primary.
 type Resolved struct {
@@ -104,7 +116,11 @@ func Resolve(cfg *config.Config, name string) (*Resolved, error) {
 			problems = append(problems, fmt.Sprintf("  %s: %s: %v", n, shown, repo.PathErr))
 			continue
 		}
-		res.Repos = append(res.Repos, Repo{Name: n, Path: repo.Path, Via: via[i], Instructions: findInstructions(repo.Path), Git: IsGitRepo(repo.Path)})
+		r := Repo{Name: n, Path: repo.Path, Via: via[i], Instructions: findInstructions(repo.Path), Git: IsGitRepo(repo.Path)}
+		if !r.Git {
+			r.Nested = FindNested(r.Path)
+		}
+		res.Repos = append(res.Repos, r)
 	}
 	if len(problems) > 0 {
 		return nil, fmt.Errorf("workspace %q has unusable repositories:\n%s\nfix the `path:` in %s or clone the repository there",
@@ -126,6 +142,23 @@ func findInstructions(dir string) []string {
 		}
 	}
 	return found
+}
+
+// FindNested returns the Git repositories directly inside dir, sorted.
+// ponytail: one level deep; deeper layouts can add the inner folder as a repo.
+func FindNested(dir string) []Nested {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []Nested
+	for _, e := range entries {
+		p := filepath.Join(dir, e.Name())
+		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") && IsGitRepo(p) {
+			out = append(out, Nested{Name: e.Name(), Instructions: findInstructions(p)})
+		}
+	}
+	return out // os.ReadDir is already sorted by name
 }
 
 // IsGitRepo reports whether dir has a .git entry (directory or worktree file).
@@ -152,11 +185,14 @@ func Instructions(r *Resolved) (string, error) {
 	b.WriteString(`
 Each repository is independent. Repositories marked (no Git) are not under
 version control; for the others, run Git operations from that repository's
-root. A task may affect multiple repositories. When
-investigating a product-level issue, search across the available repositories
-when relevant. Files listed in brackets are repository-owned instructions;
-read them before changing code in that repository if they are not already in
-your context.
+root. A folder containing Git repositories holds several independent
+repositories (listed under it): run Git commands inside the specific one you
+are changing, never in the folder itself.
+
+A task may affect multiple repositories. When investigating a product-level
+issue, search across the available repositories when relevant. Files listed
+in brackets are repository-owned instructions; read them before changing code
+in that repository if they are not already in your context.
 `)
 	if r.Context != "" {
 		data, err := os.ReadFile(r.Context)
@@ -176,11 +212,25 @@ your context.
 
 func writeRepo(b *strings.Builder, r Repo) {
 	fmt.Fprintf(b, "- %s: %s", r.Name, r.Path)
-	if !r.Git {
+	switch {
+	case len(r.Nested) > 0:
+		fmt.Fprintf(b, " (folder containing %d Git repositories)", len(r.Nested))
+	case !r.Git:
 		b.WriteString(" (no Git)")
 	}
 	if len(r.Instructions) > 0 {
 		fmt.Fprintf(b, " [%s]", strings.Join(r.Instructions, ", "))
 	}
 	b.WriteString("\n")
+	for i, n := range r.Nested {
+		if i == maxNested {
+			fmt.Fprintf(b, "  - ... and %d more\n", len(r.Nested)-maxNested)
+			break
+		}
+		fmt.Fprintf(b, "  - %s: %s", n.Name, filepath.Join(r.Path, n.Name))
+		if len(n.Instructions) > 0 {
+			fmt.Fprintf(b, " [%s]", strings.Join(n.Instructions, ", "))
+		}
+		b.WriteString("\n")
+	}
 }
